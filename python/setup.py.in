@@ -2,15 +2,8 @@ import os
 from setuptools import setup, find_packages, Extension
 from distutils.command.build import build as _build
 
-class build(_build):
-    sub_commands = [
-        ('build_ext', _build.has_ext_modules),
-        ('build_py', _build.has_pure_modules),
-        ('build_clib', _build.has_c_libraries),
-        ('build_scripts', _build.has_scripts)]
-
-
 SWIG_CXX_OPTS = "${CMAKE_SWIG_FLAGS}"
+COMPILE_DEFINITIONS = "${COMPILE_DEFINITIONS}"
 PROJ_INC_DIRS = ".;/usr/include;/usr/local/include"
 MODULE_MAP = {
     'pywrapcp': 'ortools/constraint_solver/python/routing.i',
@@ -18,6 +11,14 @@ MODULE_MAP = {
     'pywrapgraph': 'ortools/graph/python/graph.i',
     'pywraplp': 'ortools/linear_solver/python/linear_solver.i'
 }
+
+
+class build(_build):
+    sub_commands = [
+        ('build_ext', _build.has_ext_modules),
+        ('build_py', _build.has_pure_modules),
+        ('build_clib', _build.has_c_libraries),
+        ('build_scripts', _build.has_scripts)]
 
 
 def split_cmake_list(lst, prefix=None):
@@ -37,34 +38,46 @@ def get_outdir(_file):
         return _file.split('python')[0]
     return '/'.join(_file.split('/')[:-1])
 
-extensions = []
-for module, _file in MODULE_MAP.items():
-    ext = Extension(
-        '_{}'.format(module),
-        [_file],
-        swig_opts=split_cmake_list(SWIG_CXX_OPTS) + [
-            '-c++', '-I.', '-module', module] + split_cmake_list(
-            PROJ_INC_DIRS, '-I') + [
-            '-outdir', get_outdir(_file)],
-        include_dirs=split_cmake_list(PROJ_INC_DIRS),
-        libraries=['${PROJECT_NAME}'],
-        extra_compile_args="${CMAKE_CXX_FLAGS}".strip().split(' ')
-    )
-    extensions.append(ext)
 
-modules = []
-for module, _file in MODULE_MAP.items():
-    _path = os.path.dirname(_file)
-    _path = _path.split('python')[0]
-    _path = _path.split('/')
+def get_swig_options(module, _file):
+    cxx_options = split_cmake_list(SWIG_CXX_OPTS)
+    cxx_options.extend(['-c++', '-I.', '-module', module])
+    cxx_options.extend(split_cmake_list(PROJ_INC_DIRS, prefix='-I'))
+    cxx_options.extend(['-outdir', get_outdir(_file)])
+    cxx_options.extend(['-D{}'.format(x) for x in split_cmake_list(COMPILE_DEFINITIONS)])
+    return cxx_options
 
-    lst = []
-    for __path in _path:
-        if __path:
-            lst.append(__path)
-    lst.append(module)
-    modules.append('.'.join(lst))
 
+def get_extensions():
+    extensions = []
+    for module, _file in MODULE_MAP.items():
+        ext = Extension(
+            '_{}'.format(module),
+            [_file],
+            swig_opts=get_swig_options(module, _file),
+            include_dirs=split_cmake_list(PROJ_INC_DIRS),
+            libraries=['${PROJECT_NAME}'],
+            define_macros=[(x, None) for x in split_cmake_list(COMPILE_DEFINITIONS)],
+            extra_compile_args="${CMAKE_CXX_FLAGS}".strip().split(' ')
+        )
+        extensions.append(ext)
+    return extensions
+
+
+def get_modules():
+    modules = []
+    for module, _file in MODULE_MAP.items():
+        _path = os.path.dirname(_file)
+        _path = _path.split('python')[0]
+        _path = _path.split('/')
+
+        lst = []
+        for __path in _path:
+            if __path:
+                lst.append(__path)
+        lst.append(module)
+        modules.append('.'.join(lst))
+    return modules
 
 with open('${README_FILE}') as f:
     long_description = f.read()
@@ -99,6 +112,6 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Software Development :: Libraries :: Python Modules'],
     packages=find_packages(),
-    ext_modules=extensions,
-    py_modules=modules,
+    ext_modules=get_extensions(),
+    py_modules=get_modules(),
 )
