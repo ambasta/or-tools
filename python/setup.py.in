@@ -4,7 +4,8 @@ from distutils.command.build import build as _build
 
 SWIG_CXX_OPTS = "${CMAKE_SWIG_FLAGS}"
 COMPILE_DEFINITIONS = "${COMPILE_DEFINITIONS}"
-PROJ_INC_DIRS = ".;/usr/include;/usr/local/include"
+PROJ_INC_DIRS = "${CMAKE_SYSTEM_INCLUDE_PATH};${${PROJECT_NAME}_INCLUDE_DIRS}"
+PROJ_LIB_DIRS = "${CMAKE_SYSTEM_LIBRARY_PATH}"
 MODULE_MAP = {
     'pywrapcp': 'ortools/constraint_solver/python/routing.i',
     'pywrapknapsack_solver': 'ortools/algorithms/python/knapsack_solver.i',
@@ -13,21 +14,13 @@ MODULE_MAP = {
 }
 
 
-class build(_build):
-    sub_commands = [
-        ('build_ext', _build.has_ext_modules),
-        ('build_py', _build.has_pure_modules),
-        ('build_clib', _build.has_c_libraries),
-        ('build_scripts', _build.has_scripts)]
-
-
 def split_cmake_list(lst, prefix=None):
     lst_ = lst.strip().split(';')
+    _lst = []
 
     if prefix is None:
         return lst_
 
-    _lst = []
     for item in lst_:
         _lst.append('{}{}'.format(prefix, item))
     return _lst
@@ -48,6 +41,11 @@ def get_swig_options(module, _file):
     return cxx_options
 
 
+def get_macros(cmake_defs):
+    macro = [(x, None) for x in split_cmake_list(cmake_defs)]
+    return macro
+
+
 def get_extensions():
     extensions = []
     for module, _file in MODULE_MAP.items():
@@ -56,9 +54,9 @@ def get_extensions():
             [_file],
             swig_opts=get_swig_options(module, _file),
             include_dirs=split_cmake_list(PROJ_INC_DIRS),
+            library_dirs=split_cmake_list(PROJ_LIB_DIRS),
             libraries=['${PROJECT_NAME}'],
-            define_macros=[(x, None) for x in split_cmake_list(COMPILE_DEFINITIONS)],
-            extra_compile_args="${CMAKE_CXX_FLAGS}".strip().split(' ')
+            define_macros=get_macros(COMPILE_DEFINITIONS)
         )
         extensions.append(ext)
     return extensions
@@ -84,12 +82,12 @@ with open('${README_FILE}') as f:
 
 setup(
     name="${PROJECT_NAME}",
-    cmdclass={'build': build},
     version="${PROJECT_VERSION}",
-    description="Google OR-Tools python libraries and modules",
+    description="${PROJECT_DESC}",
     long_description=long_description,
-    url='https://developers.google.com/optimization/',
-    author='${AUTHORS}',
+    url='${PROJECT_URI}',
+    download_url='${DOWNLOAD_URI}',
+    author='${AUTHOR}',
     author_email='${AUTHOR_EMAIL}',
     license='${LICENSE}',
     keywords = (
